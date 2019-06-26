@@ -58,7 +58,7 @@ class Player(pygame.sprite.Sprite):
 class Mob(pygame.sprite.Sprite):
     def __init__(self):
         pygame.sprite.Sprite.__init__(self)
-        self.image_orig = meteor_img
+        self.image_orig = random.choice(meteor_images)
         self.image_orig.set_colorkey(BLACK)
         self.image = self.image_orig.copy()
         self.rect = self.image.get_rect()
@@ -89,7 +89,7 @@ class Mob(pygame.sprite.Sprite):
         self.rect.x += self.speedx
         if self.rect.top > HEIGHT or self.rect.right < 0 or self.rect.left > WIDTH:
             self.rect.x = random.randrange(0, WIDTH - self.rect.width)
-            self.rect.y = random.randrange(-100, -40)
+            self.rect.y = random.randrange(-150, -100)
             self.speedy = random.randrange(1,8)
             self.speedx = random.randrange(-3,3)
     
@@ -123,8 +123,16 @@ clock = pygame.time.Clock()
 background = pygame.image.load(path.join(img_dir, "space_background.png")).convert()
 background_rect = background.get_rect()
 player_img = pygame.image.load(path.join(img_dir, "playerShip1_orange.png")).convert()
-meteor_img = pygame.image.load(path.join(img_dir, "meteorBrown_med1.png")).convert()
 bullet_img = pygame.image.load(path.join(img_dir, "laserRed16.png")).convert()
+
+meteor_images = []
+meteor_list = ["meteorBrown_big1.png", "meteorBrown_big2.png", 
+                "meteorBrown_med1.png", "meteorBrown_med3.png",
+                "meteorBrown_small1.png", "meteorBrown_small2.png",
+                "meteorBrown_tiny1.png"]
+
+for img in meteor_list:
+    meteor_images.append(pygame.image.load(path.join(img_dir, img)).convert())
 
 all_sprites = pygame.sprite.Group()
 mobs = pygame.sprite.Group()
