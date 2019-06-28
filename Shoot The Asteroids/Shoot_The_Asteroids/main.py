@@ -23,6 +23,20 @@ BLACK = (0,0,0)
 # Asset folders
 game_folder = path.dirname(__file__)
 img_dir = path.join(game_folder, "img")
+sounds_dir = path.join(game_folder, "sounds")
+
+font_name = pygame.font.match_font("arial")
+def draw_text(surface,text, size, x, y):
+    font = pygame.font.Font(font_name, size)
+    text_surface = font.render(text, True, WHITE)
+    text_rect = text_surface.get_rect()
+    text_rect.midtop = (x,y)
+    surface.blit(text_surface, text_rect)
+    
+def newMob():
+    m = Mob()
+    all_sprites.add(m)
+    mobs.add(m)
 
 class Player(pygame.sprite.Sprite):
     def __init__(self):
@@ -34,6 +48,7 @@ class Player(pygame.sprite.Sprite):
         self.rect.centerx = WIDTH / 2
         self.rect.bottom = HEIGHT - 10
         self.speedx = 0
+        self.shield = 100
     
     def update (self):
         self.speedx = 0
@@ -54,6 +69,7 @@ class Player(pygame.sprite.Sprite):
         bullet = Bullet(self.rect.centerx, self.rect.top)
         all_sprites.add(bullet)
         bullets.add(bullet)
+        shoot_sound.play()
             
 class Mob(pygame.sprite.Sprite):
     def __init__(self):
@@ -65,7 +81,7 @@ class Mob(pygame.sprite.Sprite):
         self.rect.x = random.randrange(0, WIDTH - self.rect.width)
         self.rect.y = random.randrange(-100, -40)
         self.radius = int(self.rect.width * .85 / 2)
-        self.speedy = random.randrange(1,8)
+        self.speedy = random.randrange(1,4)
         self.speedx = random.randrange(-3,3)
         self.rot = 0
         self.rot_speed = random.randrange(-8,8)
@@ -119,6 +135,17 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Shoot_The_Asteroids!")
 clock = pygame.time.Clock()
 
+#Load all game sounds
+shoot_sound = pygame.mixer.Sound(path.join(sounds_dir, "Laser_Shoot1.wav"))
+shoot_sound.set_volume(.4)
+explosion_sounds = [pygame.mixer.Sound(path.join(sounds_dir, "Explosion1.wav")),
+                    pygame.mixer.Sound(path.join(sounds_dir, "Explosion2.wav"))]
+for sounds in explosion_sounds:
+    sounds.set_volume(.4)
+    
+pygame.mixer.music.load(path.join(sounds_dir, "Background_Music.ogg"))
+pygame.mixer.music.set_volume(0.4)
+
 #Load all game graphics
 background = pygame.image.load(path.join(img_dir, "space_background.png")).convert()
 background_rect = background.get_rect()
@@ -139,11 +166,11 @@ mobs = pygame.sprite.Group()
 bullets = pygame.sprite.Group()
 player = Player()
 all_sprites.add(player)
+score = 0
+pygame.mixer.music.play(-1) #-1 indicates to loop forever
 
 for i in range(8):
-    m = Mob()
-    all_sprites.add(m)
-    mobs.add(m)
+    newMob()
 
 running = True
 while running:
@@ -163,20 +190,27 @@ while running:
     bullets.update()
     
     #Check to see if a bullet hit an enemy
-    hits = pygame.sprite.groupcollide(bullets, mobs, True, True)
+    hits = pygame.sprite.groupcollide(mobs, bullets, True, True)
+    if hits:
+        explosion_sounds[random.randrange(0,2)].play()
     for hit in hits:
-        m = Mob()
-        all_sprites.add(m)
-        mobs.add(m)
+        score += 60 - hit.radius
+        newMob()
     
     #Check to see if a mob hit the player
-    hits = pygame.sprite.spritecollide(player, mobs, False, pygame.sprite.collide_circle)
-    if hits:
-        running = False
+    hits = pygame.sprite.spritecollide(player, mobs, True, pygame.sprite.collide_circle)
+    for hit in hits:
+        player.shield -= hit.radius
+        newMob()
+
+        
+        if player.shield <= 0:
+            running = False
     
     #Display
     screen.blit(background, background_rect)
     all_sprites.draw(screen)
+    draw_text(screen, str(score), 35, WIDTH / 2, 10)
     pygame.display.flip()
     
 pygame.quit()
