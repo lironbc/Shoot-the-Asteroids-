@@ -19,6 +19,8 @@ YELLOW = (255,255,0)
 GREEN = (0,255,0)
 BLUE = (0,0,255)
 BLACK = (0,0,0)
+AUTO_FIRE_COLOR = (237, 240, 96) #Color of text when player gets autofire powerup
+HEALTH_COLOR = (151, 255, 110) #Color of text when player gets a health powerup
 
 # Asset folders
 game_folder = path.dirname(__file__)
@@ -26,9 +28,27 @@ img_dir = path.join(game_folder, "img")
 sounds_dir = path.join(game_folder, "sounds")
 
 font_name = pygame.font.match_font("arial")
-def draw_text(surface,text, size, x, y):
+
+def show_game_over_screen():
+    screen.blit(background, background_rect)
+    draw_text(screen, "SHOOT THE ASTEROIDS!", WHITE, 32, WIDTH / 2, HEIGHT / 4)
+    draw_text(screen, "Arrow keys to move, Space to fire", \
+               WHITE, 22, WIDTH / 2, HEIGHT / 2)
+    draw_text(screen, "Press any key to begin", WHITE, 22, WIDTH / 2, HEIGHT - HEIGHT / 4)
+    pygame.display.flip()
+    waiting = True
+    while waiting:
+        clock.tick(FPS)
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+            if event.type == pygame.KEYUP:
+                waiting = False
+    
+
+def draw_text(surface, text, color, size, x, y):
     font = pygame.font.Font(font_name, size)
-    text_surface = font.render(text, True, WHITE)
+    text_surface = font.render(text, True, color)
     text_rect = text_surface.get_rect()
     text_rect.midtop = (x,y)
     surface.blit(text_surface, text_rect)
@@ -37,6 +57,11 @@ def newMob():
     m = Mob()
     all_sprites.add(m)
     mobs.add(m)
+    
+def new_powerup():
+    p = Powerup()
+    all_sprites.add(p)
+    powerups.add(p)
 
 def draw_health_bar(screen, x, y, shield):
 
@@ -70,13 +95,18 @@ class Player(pygame.sprite.Sprite):
         self.speedx = 0
         self.shield = 100
         self.hit = False
-        self.frame = 1
+        self.hit_frame = 1
         self.num_cycles = 0 #Tracks how many times invincibility frames have been cycled
         self.last_updated = pygame.time.get_ticks()
         self.num_lives = 3
+        self.respawning = False
+        self.respawn_frame = 0
+        self.powerup_type = None
+        self.powerup_time = -1 #Used as a timer for how long shield and auto fire are active
+        self.powerup_shot_time = pygame.time.get_ticks() #regulates how fast auto fire shoots
+        self.display_health_text = False
     
     def update (self):
-        #TODO: Make an animation when you die
         self.speedx = 0
         keystate = pygame.key.get_pressed()
         
@@ -91,12 +121,50 @@ class Player(pygame.sprite.Sprite):
         if self.rect.right > WIDTH:
             self.rect.right = WIDTH
             
+        if self.powerup_type:
+            self.powerup_effect()
+            
         if self.hit:
             self.invincibility_animation()
         
         if self.shield <= 0:
             self.lose_life()
+            
+        if self.respawning:
+            self.respawn_animation()
 
+    def powerup_effect(self):
+        now = pygame.time.get_ticks()
+            
+        if self.powerup_type == "extra health":
+            #powerup_time being -1 indicates first time powerup is active
+            if self.powerup_time == -1:
+                #give player health. health caps at 100
+                self.shield = min(self.shield + 25, 100)
+                health_power_up_sound.play()
+                self.powerup_time = now
+                self.display_health_text = True
+            
+            #stop displaying message after 500 ms
+            if now - self.powerup_time > 500:
+                self.display_health_text = False
+                self.powerup_time = -1
+                self.powerup_type = None
+                
+            
+        elif self.powerup_type == "auto fire":
+            #powerup_time being -1 indicates first time powerup is active       
+            if self.powerup_time == -1:
+                self.powerup_time = now    
+            
+            if now - self.powerup_time > 5000:
+                self.powerup_type = None
+                self.powerup_time = -1
+            
+            #Shoot a bullet automatically every 100 ms
+            if now - self.powerup_shot_time > 100:
+                self.powerup_shot_time = now
+                self.shoot()
             
     def invincibility_animation(self):
         now = pygame.time.get_ticks()
@@ -107,13 +175,13 @@ class Player(pygame.sprite.Sprite):
             self.image.set_colorkey(BLACK)
         elif now - self.last_updated > 100:
             self.last_updated = now
-            self.image = pygame.transform.scale(player_images[abs(self.frame)], (50,38))
+            self.image = pygame.transform.scale(player_images[abs(self.hit_frame)], (50,38))
             self.image.set_colorkey(BLACK)
-            if self.frame == 0:
+            if self.hit_frame == 0:
                 self.num_cycles += 1
-            if self.frame == 4:
-                self.frame = -4
-            self.frame += 1
+            if self.hit_frame == 4:
+                self.hit_frame = -4
+            self.hit_frame += 1
             
     def shoot(self):
         bullet = Bullet(self.rect.centerx, self.rect.top)
@@ -122,17 +190,42 @@ class Player(pygame.sprite.Sprite):
         shoot_sound.play()
         
     def got_hit(self):
-        if not player.hit:
-            player.shield -= hit.radius
+        player.shield -= hit.radius
+        if not player.hit and player.shield > 0:
             player.hit = True
             player_hit_sound.play()
     
     def lose_life(self):
+        global game_over
         player.num_lives -= 1
+        player_death_sound.play()
         if player.num_lives == 0:
-            running = False
+            game_over = True
         else:
             player.shield = 100
+            self.respawning = True
+            
+    def respawn_animation(self):
+        now = pygame.time.get_ticks()
+        if self.respawn_frame == 8:
+            self.rect.y += 62
+            self.rect.x += 25
+            self.image = pygame.transform.scale(player_images[0], (50,38))
+            self.image.set_colorkey(BLACK)
+            self.shield = 100
+            self.respawning = False
+            self.hit = True #To give player invincibility frames once they respawn
+            self.respawn_frame = 0
+        
+        elif now - self.last_updated > 250:
+            if self.respawn_frame == 0:
+                self.rect.x -= 25
+                self.rect.y -= 62
+            self.last_updated = now
+            self.image = pygame.transform.scale(respawn_images[self.respawn_frame], (100, 100))
+            self.image.set_colorkey(BLACK)
+            self.respawn_frame += 1
+        
             
 class Mob(pygame.sprite.Sprite):
     def __init__(self):
@@ -190,6 +283,30 @@ class Mob(pygame.sprite.Sprite):
             self.frame += 1
             self.last_updated = now
         
+class Powerup(pygame.sprite.Sprite):
+    def __init__(self):
+        pygame.sprite.Sprite.__init__(self)
+        image_chosen = random.randrange(0,2)
+        self.image = pygame.transform.scale(powerup_images \
+                        [image_chosen], (50, 50))
+        if image_chosen == 0:
+            self.type = "extra health"
+        elif image_chosen == 1:
+            self.type = "auto fire"
+        elif image_chosen == 2:
+            self.type = "shield"
+        self.image.set_colorkey(BLACK)
+        self.rect = self.image.get_rect()
+        self.rect.x = random.randrange(0, WIDTH - 50)
+        self.rect.y = random.randrange(-110, -60)
+        self.speedy = random.randrange(1, 5)
+    
+    def update(self):
+        self.rect.y += self.speedy
+        
+        if self.rect.y > HEIGHT:
+            self.kill()
+
     
 class Bullet(pygame.sprite.Sprite):
     def __init__(self, x, y):
@@ -205,7 +322,7 @@ class Bullet(pygame.sprite.Sprite):
         self.rect.y += self.speedy
         
         #remove bullet if it goes off screen
-        if self.rect.bottom > HEIGHT:
+        if self.rect.bottom < 0:
             self.kill()
         
         
@@ -224,10 +341,16 @@ shoot_sound.set_volume(.4)
 explosion_sounds = [pygame.mixer.Sound(path.join(sounds_dir, "Explosion1.wav")),
                     pygame.mixer.Sound(path.join(sounds_dir, "Explosion2.wav"))]
 for sounds in explosion_sounds:
-    sounds.set_volume(.4)
+    sounds.set_volume(.55)
     
 player_hit_sound = pygame.mixer.Sound(path.join(sounds_dir, "Player_Hit.wav"))
-player_hit_sound.set_volume(.4)
+player_hit_sound.set_volume(.6)
+
+player_death_sound = pygame.mixer.Sound(path.join(sounds_dir, "Player_Dead.wav"))
+player_death_sound.set_volume(0.8)
+
+health_power_up_sound = pygame.mixer.Sound(path.join(sounds_dir, "Health_Power_Up.wav"))
+health_power_up_sound.set_volume(0.5)
 
 #Load background music
 pygame.mixer.music.load(path.join(sounds_dir, "Background_Music.ogg"))
@@ -241,9 +364,10 @@ bullet_img = pygame.image.load(path.join(img_dir, "laserRed16.png")).convert()
 
 player_images = []
 
-for i in range(0,5):
+for i in range(0,6):
     player_path = path.join(img_dir, "playerShip0{}.png".format(i))
     player_images.append(pygame.image.load(player_path).convert())
+    
 
 meteor_images = []
 meteor_list = ["meteorBrown_big1.png", "meteorBrown_big2.png", 
@@ -259,20 +383,44 @@ explode_images = []
 for i in range(9):
     explode_path = path.join(img_dir, "regularExplosion0{}.png".format(i))
     explode_images.append(pygame.image.load(explode_path).convert())
+    
+respawn_images = []
 
-all_sprites = pygame.sprite.Group()
-mobs = pygame.sprite.Group()
-bullets = pygame.sprite.Group()
-player = Player()
-all_sprites.add(player)
-score = 0
-pygame.mixer.music.play(-1) #-1 indicates to loop forever
+for i in range(9):
+    respawn_path = path.join(img_dir, "sonicExplosion0{}.png".format(i))
+    respawn_images.append(pygame.image.load(respawn_path).convert())
 
-for i in range(8):
-    newMob()
+powerup_images = []
+
+for i in range(2):
+    powerup_path = path.join(img_dir, "powerUp0{}.png".format(i))
+    powerup_images.append(pygame.image.load(powerup_path).convert())
+
+
+
 
 running = True
+title_screen = True
+game_over = True
 while running:
+    
+    if game_over:
+        show_game_over_screen()
+        game_over = False
+        
+        all_sprites = pygame.sprite.Group()
+        mobs = pygame.sprite.Group()
+        bullets = pygame.sprite.Group()
+        powerups = pygame.sprite.Group()
+        player = Player()
+        all_sprites.add(player)
+        score = 0
+        pygame.mixer.music.play(-1) #-1 indicates to loop forever
+        last_powerup_spawned = pygame.time.get_ticks()
+
+        for i in range(8):
+            newMob()
+    
     clock.tick(FPS)
     
     #Process events
@@ -280,8 +428,11 @@ while running:
         if event.type == pygame.QUIT:
             running = False
         elif event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
-                player.shoot()
+            if event.key == pygame.K_SPACE and not \
+                player.powerup_type == "auto fire":
+                
+                if not player.respawning:
+                    player.shoot()
     
     #Update
     all_sprites.update()
@@ -297,22 +448,48 @@ while running:
             score += 60 - mob.radius
             newMob()
             bullet.kill()
+            
+    #Check to see if a powerup touched the player
+    powerups_touched = pygame.sprite.spritecollide(player, powerups, \
+        True, pygame.sprite.collide_circle)
+    
+    for powerup in powerups_touched:
+        if powerup.type == "extra health":
+            player.powerup_type = "extra health"
+        elif powerup.type == "auto fire":
+            player.powerup_type = "auto fire"
     
     #Check to see if a mob hit the player
     hits = pygame.sprite.spritecollide(player, mobs, False, pygame.sprite.collide_circle)
     for hit in hits:
-        if not player.hit:
-            hit.exploded = True
+        if not player.hit and not player.respawning:
+            player.got_hit()
+            
+            #explode the meteor if the player got hit but is still alive,
+            #otherwise just make it disappear without explosion
+            if player.shield > 0:
+                hit.exploded = True
+            else:
+                hit.kill()
             newMob()
-
-        player.got_hit()
+        
+    #Check if it is time for a new powerup to spawn
+    if pygame.time.get_ticks() - last_powerup_spawned > 2000:
+        new_powerup()
+        last_powerup_spawned = pygame.time.get_ticks()
+        
     
     #Display
     screen.blit(background, background_rect)
     all_sprites.draw(screen)
-    draw_text(screen, str(score), 35, WIDTH / 2, 10)
+    draw_text(screen, str(score), WHITE, 35, WIDTH / 2, 10)
     draw_health_bar(screen, 5, 5, player.shield)
     draw_num_lives(screen, WIDTH - 130, 20, player.num_lives)
+    if player.powerup_type == "auto fire":
+        draw_text(screen, "AUTO FIRE", AUTO_FIRE_COLOR, 50, 235, 50)
+        
+    if player.display_health_text:
+        draw_text(screen, "HEALTH RESTORED", HEALTH_COLOR, 44, 235, 50)
     pygame.display.flip()
     
 pygame.quit()
