@@ -7,6 +7,8 @@ Created on Jun 25, 2019
 import pygame
 import random
 from os import path
+from operator import itemgetter
+import pickle
 
 WIDTH = 480
 HEIGHT = 600
@@ -34,17 +36,45 @@ def show_game_over_screen():
     draw_text(screen, "SHOOT THE ASTEROIDS!", WHITE, 32, WIDTH / 2, HEIGHT / 4)
     draw_text(screen, "Arrow keys to move, Space to fire", \
                WHITE, 22, WIDTH / 2, HEIGHT / 2)
-    draw_text(screen, "Press any key to begin", WHITE, 22, WIDTH / 2, HEIGHT - HEIGHT / 4)
+#     draw_text(screen, "Press any key to begin", WHITE, 22, WIDTH / 2, HEIGHT - HEIGHT / 4)
+    draw_menu_buttons()
+    pygame.mixer.music.load(background_music["menu"])
+    pygame.mixer.music.set_volume(0.4)
+    pygame.mixer.music.play(-1) #-1 indicates to loop forever
     pygame.display.flip()
     waiting = True
+    pos = (0,0) #Track position of mouse to see if buttons are clicked
+    high_scores = []
+    scores_dir = path.join(game_folder, "scores")
+
+#     with open(path.join(scores_dir, "highscores.txt"), 'r') as f:
+#         high_scores = pickle.load(f)
+        
     while waiting:
         clock.tick(FPS)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 pygame.quit()
-            if event.type == pygame.KEYUP:
-                waiting = False
+                exit()
+            if event.type == pygame.MOUSEBUTTONUP:
+                pos = pygame.mouse.get_pos() #Used to see if button has been clicked
+        
+        #Check to see if button has been clicked
+        for button in main_menu_buttons:
+            if button.rect.collidepoint(pos):
+                if button.type == "start":
+                    waiting = False
+                elif button.type == "high scores":
+                    pass
+                elif button.type == "quit":
+                    pygame.quit()
+                    exit() 
+            
     
+def draw_menu_buttons():
+    for button in main_menu_buttons:
+        image = pygame.transform.scale(button.image, (121, 60))
+        screen.blit(image, (button.rect.x, button.rect.y))
 
 def draw_text(surface, text, color, size, x, y):
     font = pygame.font.Font(font_name, size)
@@ -157,7 +187,7 @@ class Player(pygame.sprite.Sprite):
             if self.powerup_time == -1:
                 self.powerup_time = now    
             
-            if now - self.powerup_time > 5000:
+            if now - self.powerup_time > 5000 or self.respawning:
                 self.powerup_type = None
                 self.powerup_time = -1
             
@@ -225,7 +255,18 @@ class Player(pygame.sprite.Sprite):
             self.image = pygame.transform.scale(respawn_images[self.respawn_frame], (100, 100))
             self.image.set_colorkey(BLACK)
             self.respawn_frame += 1
-        
+            
+class Button(pygame.sprite.Sprite):
+    def __init__(self, image, x, y):
+        pygame.sprite.Sprite.__init__(self)
+        self.image = image
+        image.set_colorkey(BLACK)
+        self.rect = self.image.get_rect()
+        self.rect.x = x
+        self.rect.y = y
+        self.rect.width = 121
+        self.rect.height = 60
+        self.type = None
             
 class Mob(pygame.sprite.Sprite):
     def __init__(self):
@@ -323,9 +364,7 @@ class Bullet(pygame.sprite.Sprite):
         
         #remove bullet if it goes off screen
         if self.rect.bottom < 0:
-            self.kill()
-        
-        
+            self.kill()    
 
 #initialize pygame and create window
 pygame.init()
@@ -353,8 +392,9 @@ health_power_up_sound = pygame.mixer.Sound(path.join(sounds_dir, "Health_Power_U
 health_power_up_sound.set_volume(0.5)
 
 #Load background music
-pygame.mixer.music.load(path.join(sounds_dir, "Background_Music.ogg"))
-pygame.mixer.music.set_volume(0.4)
+background_music = {"game" : path.join(sounds_dir, "Background_Music.ogg"),
+                    "menu" : path.join(sounds_dir, "Main_Menu.ogg") }
+
 
 
 #Load all game graphics
@@ -395,9 +435,21 @@ powerup_images = []
 for i in range(2):
     powerup_path = path.join(img_dir, "powerUp0{}.png".format(i))
     powerup_images.append(pygame.image.load(powerup_path).convert())
+    
+main_menu_buttons = []
 
-
-
+main_menu_x = 20
+for i in range(3):
+    main_menu_path = path.join(img_dir, "main0{}.png".format(i))
+    image = pygame.image.load(main_menu_path).convert()
+    main_menu_buttons.append(Button(image, main_menu_x, HEIGHT - HEIGHT / 4))
+#     all_sprites.add(main_menu_buttons[i])
+#     buttons.add(main_menu_buttons[i])
+    main_menu_x += WIDTH / 3
+    
+main_menu_buttons[0].type = "start"
+main_menu_buttons[1].type = "high scores"
+main_menu_buttons[2].type = "quit"
 
 running = True
 title_screen = True
@@ -405,16 +457,19 @@ game_over = True
 while running:
     
     if game_over:
-        show_game_over_screen()
-        game_over = False
-        
         all_sprites = pygame.sprite.Group()
         mobs = pygame.sprite.Group()
         bullets = pygame.sprite.Group()
         powerups = pygame.sprite.Group()
+        buttons = pygame.sprite.Group()
+        show_game_over_screen()
+        game_over = False
+        
         player = Player()
         all_sprites.add(player)
         score = 0
+        pygame.mixer.music.load(background_music["game"])
+        pygame.mixer.music.set_volume(0.4)
         pygame.mixer.music.play(-1) #-1 indicates to loop forever
         last_powerup_spawned = pygame.time.get_ticks()
 
@@ -474,7 +529,7 @@ while running:
             newMob()
         
     #Check if it is time for a new powerup to spawn
-    if pygame.time.get_ticks() - last_powerup_spawned > 2000:
+    if pygame.time.get_ticks() - last_powerup_spawned > 20000:
         new_powerup()
         last_powerup_spawned = pygame.time.get_ticks()
         
