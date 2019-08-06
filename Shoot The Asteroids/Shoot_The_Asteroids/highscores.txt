@@ -1,0 +1,1 @@
+{"people": [{"name": "LIRON", "score": 26907}, {"name": "DAD", "score": 25935}, {"name": "LIRON", "score": 15262}, {"name": "SHAI", "score": 11920}, {"name": "LIRON", "score": 4709}]}
