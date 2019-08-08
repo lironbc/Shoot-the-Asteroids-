@@ -14,6 +14,7 @@ import pygame
 import random
 from os import path
 from operator import itemgetter
+from sys import exit
 import json
 from pygame.constants import K_BACKSPACE
 
@@ -758,7 +759,7 @@ bullet_img = pygame.image.load(path.join(img_dir, "laserRed16.png")).convert()
 
 player_images = []
 
-for i in range(0,6):
+for i in range(0,5):
     player_path = path.join(img_dir, "playerShip0{}.png".format(i))
     player_images.append(pygame.image.load(player_path).convert())
     
